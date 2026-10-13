@@ -4,6 +4,7 @@ import fitz
 from PIL import Image
 
 from app.services.forensics import analyze_forensics
+from app.services.scoring import score_document
 
 
 def _pdf_with_editor_metadata():
@@ -13,7 +14,8 @@ def _pdf_with_editor_metadata():
     return document.tobytes()
 
 
-def test_pdf_editor_metadata_and_multiple_eof_are_reported(tmp_path):
+def test_pdf_editor_metadata_and_multiple_eof_are_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.forensics._ocr_numeric_tokens", lambda _page: [])
     path = tmp_path / "editor.pdf"
     pdf = _pdf_with_editor_metadata()
     path.write_bytes(pdf + b"\n%%EOF\n")
@@ -22,6 +24,25 @@ def test_pdf_editor_metadata_and_multiple_eof_are_reported(tmp_path):
     checks = {finding["check"] for finding in findings}
     assert "pdf_editor_metadata" in checks
     assert "pdf_incremental_updates" in checks
+
+
+def test_pdf_editor_metadata_remains_authenticity_evidence(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.forensics._ocr_numeric_tokens", lambda _page: [])
+    path = tmp_path / "editor.pdf"
+    path.write_bytes(_pdf_with_editor_metadata())
+
+    findings = analyze_forensics(path, "pdf", [])
+    assert "pdf_editor_metadata" in {finding["check"] for finding in findings}
+    score, verdict = score_document(
+        [{**finding, "category": "forensics"} for finding in findings],
+        [],
+        4,
+        "success",
+        consistency_checks_count=1,
+    )
+
+    assert score < 100
+    assert verdict in {"needs_review", "suspicious"}
 
 
 def test_missing_image_exif_is_not_a_finding(tmp_path):

@@ -18,6 +18,7 @@ class ReadResult:
     text: str
     page_images: list[bytes]
     ocr_status: str
+    page_texts: list[str]
 
 
 def _get_ocr_reader(languages: list[str]):
@@ -50,7 +51,12 @@ def read_document(path: Path, file_type: str, languages: list[str]) -> ReadResul
     with Image.open(io.BytesIO(image_bytes)) as image:
         image.load()
     text = _image_text(image_bytes, languages)
-    return ReadResult(text=text, page_images=[image_bytes], ocr_status=_ocr_status(text))
+    return ReadResult(
+        text=text,
+        page_images=[image_bytes],
+        ocr_status=_ocr_status(text),
+        page_texts=[text],
+    )
 
 
 def _read_pdf(path: Path, languages: list[str]) -> ReadResult:
@@ -63,10 +69,20 @@ def _read_pdf(path: Path, languages: list[str]) -> ReadResult:
             pixmap = page.get_pixmap(matrix=fitz.Matrix(1.5, 1.5), alpha=False)
             page_images.append(pixmap.tobytes("png"))
 
-    text = "\n".join(part for part in text_parts if part).strip()
+    text = "\n\f\n".join(text_parts).strip()
     if len(text) >= MIN_TEXT_LENGTH:
-        return ReadResult(text=text, page_images=page_images, ocr_status="success")
+        return ReadResult(
+            text=text,
+            page_images=page_images,
+            ocr_status="success",
+            page_texts=text_parts,
+        )
 
     ocr_parts = [_image_text(image, languages) for image in page_images]
-    combined = "\n".join(part for part in [text, *ocr_parts] if part).strip()
-    return ReadResult(text=combined, page_images=page_images, ocr_status=_ocr_status(combined))
+    combined = "\n\f\n".join(part for part in [text, *ocr_parts] if part).strip()
+    return ReadResult(
+        text=combined,
+        page_images=page_images,
+        ocr_status=_ocr_status(combined),
+        page_texts=text_parts,
+    )

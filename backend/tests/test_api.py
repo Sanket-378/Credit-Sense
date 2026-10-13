@@ -160,6 +160,10 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
             self.chat = SimpleNamespace(completions=MockCompletions())
 
     monkeypatch.setattr("app.services.extractor.Groq", MockGroq)
+    monkeypatch.setattr(
+        "app.services.pipeline.analyze_pdf_report",
+        lambda *_args, **_kwargs: {"findings": [], "positive_signals": []},
+    )
     app.dependency_overrides[get_settings] = lambda: Settings(
         groq_api_key="test-key",
         groq_text_model="test-model",
@@ -187,8 +191,12 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
     result = response.json()
     assert result["overall"]["documents_processed"] == 1
     assert result["documents"][0]["extracted_data"]["net_salary"] == 45000
+    assert result["documents"][0]["extraction_method"] == "llm"
+    assert result["documents"][0]["extraction_confidence"] == "medium"
+    assert "extraction_check" in result["documents"][0]
     assert "checks_performed" in result["documents"][0]
     assert "checks_skipped" in result["documents"][0]
+    assert result["documents"][0]["positive_signals"] == []
     with test_sessions() as session:
         profile = session.get(VerifiedProfile, result["profile_id"])
         assert profile is not None

@@ -40,3 +40,9 @@ The consistency, scoring and forensics tests are offline and do not call Groq.
 Uploads are size- and signature-validated, held in temporary files only while processed, and removed even if processing fails. Original documents and OCR text are never persisted. ID numbers are masked before extracted data is returned or stored. SQLite stores the profile UUID, overall score/verdict, extracted fields and per-document scores/verdicts.
 
 The verification endpoint accepts PDF, JPG/JPEG and PNG files up to `MAX_FILE_MB` each, with at most 10 files per request. `doc_types` must match the number and order of uploaded files and use `salary_slip`, `bank_statement`, `upi_statement`, `invoice` or `id_proof`. Per-document responses include `checks_performed` and `checks_skipped`; a verified verdict requires at least two completed consistency checks.
+
+### Limits of tamper detection
+
+Tamper findings and positive signals are evidence indicators, not proof of authenticity. A careful editor can preserve or recreate PDF metadata, fonts, structure, and visible text, and signatures or generator fingerprints are only useful when independently trusted. A clean result means no configured tamper-evidence signal was detected; it does not establish that a document is genuine.
+
+Known statement generators can be registered in `app/data/known_generators.json` under `sources`, with optional `aliases`, `doc_types`, `producers`, `creators`, and `font_set` values. A claimed source is matched against these registered properties; keep the profiles sourced from trusted original statements.

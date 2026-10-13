@@ -33,6 +33,12 @@ const currencyFormatter = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 2,
 })
 
+function verdictLabel(verdict) {
+  return verdict === 'no_tampering_detected'
+    ? 'No tampering detected'
+    : verdict.replaceAll('_', ' ')
+}
+
 function numericAmount(value) {
   if (value === null || value === undefined || value === '') return null
   const amount = typeof value === 'number'
@@ -51,6 +57,7 @@ function MissingValue() {
 }
 
 function TransactionTable({ transactions, extractedData }) {
+  const transactionCount = transactions.length
   const hasBalance = transactions.some((transaction) => numericAmount(transaction.balance) !== null)
   const debitTotal = transactions.reduce((sum, transaction) => sum + (numericAmount(transaction.debit) || 0), 0)
   const creditTotal = transactions.reduce((sum, transaction) => sum + (numericAmount(transaction.credit) || 0), 0)
@@ -63,7 +70,7 @@ function TransactionTable({ transactions, extractedData }) {
 
   return (
     <section className="transaction-section" aria-label="Extracted transactions">
-      <h4>Transactions <span>{transactions.length}</span></h4>
+      <h4>Transactions <span aria-label={`${transactionCount} transactions`}>{transactionCount}</span></h4>
       {transactions.length ? (
         <div className="transaction-table-scroll">
           <table className="transaction-table">
@@ -91,6 +98,7 @@ function TransactionTable({ transactions, extractedData }) {
         </div>
       ) : <p className="no-findings">No transactions were found.</p>}
       <div className={`transaction-totals${totalsMismatch ? ' transaction-totals-mismatch' : ''}`} aria-label={totalsMismatch ? 'Transaction totals do not match stated totals' : 'Transaction totals'}>
+        {totalsMismatch && <p className="transaction-reconciliation-message">Transactions did not reconcile with statement totals</p>}
         <div><strong>Debit total</strong><span>{currencyFormatter.format(debitTotal)}</span><small>Stated: {formatCurrency(extractedData.total_debits) || <MissingValue />}</small></div>
         <div><strong>Credit total</strong><span>{currencyFormatter.format(creditTotal)}</span><small>Stated: {formatCurrency(extractedData.total_credits) || <MissingValue />}</small></div>
       </div>
@@ -119,10 +127,10 @@ function CheckCoverage({ document }) {
   )
 }
 
-function CheckSummary({ title, result }) {
+function CheckSummary({ title, result, className = '' }) {
   const hasFindings = result.findings.length > 0
   return (
-    <details className="document-check" open={hasFindings || undefined}>
+    <details className={`document-check ${className}`} open={hasFindings || undefined}>
       <summary>
         <span>{title}</span>
         <span className={`check-status check-status-${result.status}`}>{result.status.replace('_', ' ')}</span>
@@ -155,14 +163,25 @@ function DocumentResultCard({ document }) {
         </div>
         <div className="document-result-score">
           <strong>{document.authenticity_score}</strong><span>/100</span>
-          <span className={`verdict-badge verdict-${document.verdict}`}>{document.verdict.replaceAll('_', ' ')}</span>
+          <span className={`verdict-badge verdict-${document.verdict}`}>{verdictLabel(document.verdict)}</span>
         </div>
       </div>
       <div className="document-result-statuses">
         <div><span>OCR extraction</span><span className={`check-status check-status-${document.ocr_status === 'success' ? 'passed' : document.ocr_status === 'partial' ? 'warning' : 'failed'}`}>{document.ocr_status}</span></div>
+        <div><span>Extraction confidence</span><span className={`extraction-confidence extraction-confidence-${document.extraction_confidence || 'low'}`}>{document.extraction_confidence || 'low'}</span></div>
+        <section className="positive-signals" aria-label="Positive evidence signals">
+          <h4>Positive signals</h4>
+          {document.positive_signals?.length ? (
+            <ul>
+              {document.positive_signals.map((signal) => <li key={signal}>{signal.replaceAll('_', ' ')}</li>)}
+            </ul>
+          ) : <p>No independent positive evidence signals.</p>}
+        </section>
         <CheckSummary title="Forgery check" result={document.forgery_check} />
         <CheckSummary title="Consistency check" result={document.consistency_check} />
+        <CheckSummary title="Data reading issues" result={document.extraction_check || { status: 'passed', findings: [] }} className="data-reading-check" />
       </div>
+      {document.verdict_message && <p className="document-verdict-message">{document.verdict_message}</p>}
       <CheckCoverage document={document} />
       <details className="extracted-data">
         <summary>Extracted information <span>{document.missing_fields.length ? `${document.missing_fields.length} fields missing` : 'View fields'}</span></summary>
@@ -243,7 +262,7 @@ export default function Documents() {
               </div>
               <div className="overall-result">
                 <div><span>Overall authenticity score</span><strong>{result.overall.authenticity_score}<small>/100</small></strong></div>
-                <span className={`verdict-badge verdict-${result.overall.verdict}`}>{result.overall.verdict.replaceAll('_', ' ')}</span>
+                <span className={`verdict-badge verdict-${result.overall.verdict}`}>{verdictLabel(result.overall.verdict)}</span>
                 <span className="processed-count">{result.overall.documents_processed} document{result.overall.documents_processed === 1 ? '' : 's'} processed</span>
               </div>
               <div className="document-results">
