@@ -1,13 +1,45 @@
-node_modules/
-dist/
-.vite/
-.env
-.venv/
-venv/
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+
+# Environment variables
+.env
+*.env
+!.env.example
+
+# Database
 *.db
-.pytest_cache/
-*.tmp
-*.temp
-backend/temp/
+*.sqlite
+*.sqlite3
+
+# Vector Database
+chroma_db/
+*.chroma
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
