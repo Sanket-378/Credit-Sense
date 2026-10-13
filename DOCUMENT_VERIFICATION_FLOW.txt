@@ -106,10 +106,11 @@ For UPI and bank statements, extraction is deterministic-first:
   a. The statement parser examines the text layer before asking a model to
      extract transactions. It looks for dated transaction blocks, direction
      keywords, amounts, transaction IDs, and statement totals. Supported
-     date formats are normalized to ISO dates in code. The direction keywords
-     determine whether a transaction is a debit or credit. A parser result is
-     selected when the layout is recognized and at least two transactions are
-     found.
+     date formats, including month-first dates such as "Sep 21, 2026", are
+     normalized to ISO dates in code. The direction keywords determine
+     whether a transaction is a debit or credit. A parser result is selected
+     when the layout is recognized, at least two transactions are found, and
+     every recognized dated row has a parsed transaction.
 
   b. Statement summary totals found by the parser are used as stated totals;
      the language model is not asked to determine those totals.

@@ -236,4 +236,6 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
         assert profile.overall_score == result["overall"]["authenticity_score"]
         assert "payslip.pdf" not in json.dumps(profile.data)
         assert profile.data["documents"][0]["extracted_data"]["employee_name"] == "Asha Rao"
+        assert profile.data["documents"][0]["extraction_method"] == "llm"
+        assert profile.data["documents"][0]["extraction_confidence"] == "medium"
     engine.dispose()

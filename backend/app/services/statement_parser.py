@@ -4,7 +4,8 @@ from datetime import datetime
 from typing import Any
 
 DATE_PATTERN = re.compile(
-    r"^\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s*[A-Za-z]{3,9},?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4})"
+    r"^\s*(\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}|"
+    r"\d{1,2}\s*[A-Za-z]{3,9},?\s*\d{4}|\d{1,2}/\d{1,2}/\d{4})"
 )
 MIN_TRANSACTIONS_FOR_PARSER = 2
 AMOUNT_PATTERN = re.compile(r"₹\s*([0-9][0-9,]*(?:\.\d{1,2})?)")
@@ -55,8 +56,13 @@ class StatementParseResult:
 
 def _normalize_date(value: str) -> str | None:
     candidate = re.sub(r"\s+", " ", value.strip().rstrip(","))
+    candidate = re.sub(r"\bSept(?=\s)", "Sep", candidate, flags=re.IGNORECASE)
     formats = (
         "%Y-%m-%d",
+        "%b %d, %Y",
+        "%b %d %Y",
+        "%B %d, %Y",
+        "%B %d %Y",
         "%d%b, %Y",
         "%d%b %Y",
         "%d %b, %Y",
@@ -285,6 +291,7 @@ def parse_statement(text: str, doc_type: str) -> StatementParseResult:
         and direction_count > 0
         and amount_count > 0
         and len(transactions) >= MIN_TRANSACTIONS_FOR_PARSER
+        and len(transactions) >= detected_date_count
     )
 
     return StatementParseResult(

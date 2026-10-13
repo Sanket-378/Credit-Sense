@@ -337,6 +337,8 @@ async def process_documents(
                 "doc_type": result["doc_type"],
                 "authenticity_score": result["authenticity_score"],
                 "verdict": result["verdict"],
+                "extraction_method": result["extraction_method"],
+                "extraction_confidence": result["extraction_confidence"],
                 "extracted_data": result["extracted_data"],
             }
             for result in results
