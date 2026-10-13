@@ -1,0 +1,320 @@
+CREDITSENSE DOCUMENT VERIFICATION
+=================================
+
+Purpose
+-------
+This guide explains what happens after a user submits documents, how the
+backend extracts information, how it checks that information, and how it
+calculates a score and verdict.
+
+The verification result is an evidence-based assessment. It is not a guarantee
+that a document is genuine, and a high score is not a substitute for checking
+the original document with its issuer.
+
+Quick code map
+--------------
+These are the main backend code files for the technologies and checks used by
+document verification:
+
+  OCR (Optical Character Recognition)
+    backend/app/services/reader.py
+    Reads PDF text layers, renders PDF pages, and runs EasyOCR when an image
+    or scanned PDF needs text recognition.
+
+  Multimodal AI (text plus document image)
+    backend/app/services/vision_check.py
+    When enabled, sends a page image and a small set of numeric fields to the
+    configured Groq vision model. It compares the visually read values with
+    the extracted values. This is an optional cross-check.
+
+  Text extraction with AI
+    backend/app/services/extractor.py
+    Uses the configured Groq text model to extract structured fields when
+    needed. UPI and bank statement transactions are parsed with regular
+    expressions first by statement_parser.py.
+
+  PDF and image forensics
+    backend/app/services/forensics.py
+    Checks PDF metadata and structure, signatures, text styles, overlays,
+    visible text versus the PDF text layer, and image error-level signals.
+
+  Rule-based data consistency checks
+    backend/app/services/consistency.py
+    Applies arithmetic, balance, date, required-field, and cross-document
+    consistency rules to the extracted values.
+
+  End-to-end orchestration and scoring
+    backend/app/services/pipeline.py
+    backend/app/services/scoring.py
+    The pipeline runs reading, extraction, forensics, vision cross-checks, and
+    consistency checks. The scoring module applies category penalty caps and
+    chooses the document score and verdict.
+
+
+1. Upload validation and privacy
+-------------------------------
+The API accepts up to 10 PDF, JPG, JPEG, or PNG files per request. Each file
+must be within the configured size limit, and its extension must match its
+actual file signature. The caller provides a document type for each file:
+salary slip, bank statement, UPI statement, invoice, or ID proof.
+
+Validated uploads are written to temporary files while they are processed.
+The temporary files are deleted after processing, including when processing
+fails. The original files and the extracted OCR text are not stored in the
+database. The database stores the result, including extracted fields, scores,
+and verdicts. Sensitive ID values are masked before they are returned or
+stored.
+
+The backend does not log document contents. Extraction failures may log
+technical details such as the error type and token usage, but not the text sent
+for extraction.
+
+Main implementation areas:
+  backend/app/routers/documents.py
+  backend/app/services/file_handler.py
+  backend/app/services/pipeline.py
+
+
+2. Reading text and images
+--------------------------
+For PDFs, the reader first gets the text layer from every page. It also renders
+up to the first five pages into images for OCR and image-based checks. If the
+PDF text layer contains enough text, that text is used directly. If it has too
+little text, OCR is used to supplement it. For image uploads, OCR reads the
+image.
+
+The result includes an OCR status:
+  success - enough readable text was obtained
+  partial - some text was obtained, but not enough
+  failed  - no readable text was obtained
+
+The extracted text and page images are passed to later checks in memory.
+
+Main implementation area:
+  backend/app/services/reader.py
+
+
+3. Extracting document fields
+-----------------------------
+The backend chooses an extraction schema based on the submitted document
+type. It asks for only the fields relevant to that document. The language
+model is instructed to treat document text as untrusted data, return JSON,
+avoid guessing, and use null for values it cannot find.
+
+For UPI and bank statements, extraction is deterministic-first:
+
+  a. The statement parser examines the text layer before asking a model to
+     extract transactions. It looks for dated transaction blocks, direction
+     keywords, amounts, transaction IDs, and statement totals. Supported
+     date formats are normalized to ISO dates in code. The direction keywords
+     determine whether a transaction is a debit or credit. A parser result is
+     selected when the layout is recognized and at least two transactions are
+     found.
+
+  b. Statement summary totals found by the parser are used as stated totals;
+     the language model is not asked to determine those totals.
+
+  c. If parser layout recognition is insufficient, one language-model call
+     extracts the statement fields and transactions. This fallback uses
+     temperature 0 and an increased token budget. It is not split into
+     transaction chunks and does not run a second recovery extraction.
+     If the model output is cut off or invalid, extraction confidence is low.
+
+  d. When the parser handles transactions, a small model request may be used
+     for header fields it could not find, such as bank name or account holder.
+     The prompt only receives the first page text. Account holder values that
+     look like an email address or mostly digits are rejected.
+
+The transaction direction normalizer corrects which amount field contains an
+amount; it does not delete a transaction. "Paid to", "Payment to", and "Sent
+to" identify debits. "Received from" and "Refund" identify credits.
+
+Extracted values are sanitized before checks. Numeric fields are converted to
+numbers, transaction records are restricted to known fields, and invalid
+account-holder values are nulled. ID proof numbers are masked.
+
+Extraction method values:
+  parser       - deterministic statement transaction parser selected
+  llm          - language-model extraction for a non-statement document
+  llm_fallback - statement parser layout was not sufficient, so the model
+                 extracted the statement
+
+Extraction confidence values:
+  high   - parser used and all available transaction totals reconcile
+  medium - parser used but a total is missing or only a small mismatch remains;
+           also used for a valid, non-truncated general LLM result
+  low    - statement LLM fallback, truncated/invalid output, or a substantial
+           transaction-total mismatch
+
+Parser and extractor implementation areas:
+  backend/app/services/statement_parser.py
+  backend/app/services/extractor.py
+
+
+4. Forensic and document consistency checks
+-------------------------------------------
+After extraction, the backend runs two different kinds of checks. They answer
+different questions and their findings are kept separate in the response.
+
+Forgery / forensic checks look for evidence of PDF or image editing. For PDFs,
+the current checks include:
+  - Producer and creator metadata associated with common editing software.
+  - Producer/creator mismatch, creation/modification date mismatch, missing
+    creation date, and XMP edit-history entries.
+  - Incremental revisions, cross-reference and /Prev information, repeated
+    object definitions, and nonzero object generations.
+  - Amount text spans that differ from the page's dominant amount font, size,
+    or color.
+  - Filled page-background rectangles covering text, and substantially
+    overlapping text spans.
+  - Numeric text-layer tokens compared with OCR tokens from a rendered page.
+  - Digital signatures checked for cryptographic integrity and validity.
+    A signature finding is not a general guarantee that the signer is trusted.
+  - Error-level analysis on rendered page images.
+
+Known statement-generator profiles can be registered in:
+  backend/app/data/known_generators.json
+
+Each profile may name source aliases, supported document types, producer and
+creator metadata, and a font set. A claimed source with matching registered
+properties adds the positive signal "generator_matches_known_source". A
+mismatch produces a medium forensic finding. Only register profiles based on
+trusted original statements.
+
+Consistency checks look for contradictions among values inside the document.
+Examples include:
+  - Salary: gross salary minus deductions compared with net salary.
+  - Bank statement: opening balance plus credits minus debits compared with
+    closing balance; transaction totals and running balances checked where
+    the required values exist.
+  - Invoice: subtotal plus tax compared with invoice total.
+  - Statement period and dates checked for invalid formats, future dates, or
+    impossible dates.
+  - Required fields, transaction structure, and cross-document name
+    consistency.
+
+Extraction-quality checks are distinct from authenticity checks. For example,
+when extracted transaction amounts do not add up to the printed statement
+totals, the backend reports "Could not fully verify transactions" under data
+reading issues. That mismatch affects confidence and the verdict, but its
+category has no direct authenticity-score penalty.
+
+Main implementation areas:
+  backend/app/services/forensics.py
+  backend/app/services/consistency.py
+  backend/app/services/vision_check.py
+  backend/app/services/extractor.py
+  backend/app/services/pipeline.py
+
+
+5. Positive evidence
+--------------------
+The backend can report positive signals when it can independently establish
+supporting evidence. Current signal names include:
+  valid_digital_signature
+  generator_matches_known_source
+  transaction_sums_reconcile
+  balance_chain_reconciles
+
+Transaction totals are summed from the extracted transactions and compared
+with the printed statement totals. The comparison allows the larger of one
+rupee or one percent of the stated total. For bank statements, the balance
+chain check compares opening balance plus credits minus debits with closing
+balance.
+
+Positive signals increase confidence in the evidence available to the system,
+but do not add points to the numeric score. A verified verdict requires at
+least two distinct positive signals.
+
+
+6. How the score and verdict are calculated
+--------------------------------------------
+Each document starts with an authenticity score of 100. Findings have a
+severity and category. The base severity penalties are:
+  low       3 points
+  medium   10 points
+  high     25 points
+
+Penalties are accumulated by category, then capped so that repeated similar
+findings cannot remove the entire score:
+  forensics     maximum 50 points
+  consistency   maximum 35 points
+  extraction    maximum  0 points
+
+The score is bounded between 0 and 100. Extraction findings do not subtract
+authenticity points, because an extraction failure is not itself evidence of
+forgery. However, low extraction confidence, any extraction-category finding,
+missing required fields, or unsuccessful OCR can prevent a verified verdict.
+
+The score-to-verdict thresholds are:
+  80-100   verified, subject to the additional requirements below
+  50-79    needs_review
+  0-49     suspicious
+
+"verified" has additional requirements beyond the score threshold:
+  - At least two distinct positive signals.
+  - At least two consistency checks completed.
+  - No medium or high forensic findings.
+  - No extraction-category findings.
+  - No missing required fields.
+  - OCR status is success.
+
+If there are no findings, extraction is not low confidence, OCR succeeded,
+required fields are present, but fewer than two positive signals exist, the
+verdict is "no_tampering_detected" and the score is capped at 85. The UI says:
+"No signs of tampering found. This is not proof of authenticity."
+
+If extraction confidence is low and the verdict needs review, the UI advises:
+"We could not read this document reliably. Try a clearer or original PDF."
+
+For multiple documents, the overall score gives 60 percent weight to the
+lowest document score and 40 percent to the average document score. Cross-
+document name mismatches subtract additional points. If the calculated
+overall verdict is verified but any individual document is not verified, the
+overall verdict is changed to needs_review.
+
+Main implementation area:
+  backend/app/services/scoring.py
+
+
+7. What is returned and displayed
+---------------------------------
+Each document result includes the score and verdict, extracted fields,
+missing fields, OCR status, extraction method and confidence, positive
+signals, and findings grouped into:
+  - Forgery check
+  - Consistency check
+  - Data reading issues
+
+The response also indicates which consistency checks were performed or
+skipped. The frontend displays extraction confidence, the positive signals,
+the three finding groups, and statement transaction tables with extracted
+and stated totals.
+
+The API response models are defined in:
+  backend/app/schemas.py
+
+The document results UI is implemented in:
+  src/pages/Documents.jsx
+
+
+8. Limits and troubleshooting
+-----------------------------
+These checks identify configured tamper-evidence signals; they cannot prove
+that a document is genuine. A careful editor may preserve or recreate
+metadata, fonts, structure, and visible content. A valid signature is useful
+only when its signer and trust chain are independently trusted. OCR and PDF
+text extraction can also miss or misread information.
+
+For statement extraction debugging, run from the repository root:
+  backend\.venv\Scripts\python.exe backend\scripts\debug_extract.py path\to\statement.pdf
+
+That script prints each page's text layer (up to 3000 characters) and the
+pipeline's extracted transactions and totals to the console. Do not share that
+output unless it is safe to disclose the statement contents.
+
+For PDF forensic signals, run:
+  backend\.venv\Scripts\python.exe backend\scripts\forensics_report.py path\to\document.pdf
+
+That script prints forensic signals to the console. It does not create a
+report file.
