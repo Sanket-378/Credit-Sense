@@ -148,9 +148,3 @@ export const schemes = [
     tag: 'Retirement',
   },
 ]
-
-export const verificationResult = {
-  authenticity: 96,
-  ocrStatus: 'Complete',
-  forgeryStatus: 'No issues detected',
-}

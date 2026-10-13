@@ -1,7 +1,13 @@
 import { useRef, useState } from 'react'
 import { FileText, FileUp, Trash2, UploadCloud } from 'lucide-react'
 
-const DOCUMENT_TYPES = ['Salary Slip', 'Bank Statement', 'Invoice', 'ID Proof']
+const DOCUMENT_TYPES = [
+  'Salary Slip',
+  'Bank Statement',
+  'UPI / Wallet Statement',
+  'Invoice',
+  'ID Proof',
+]
 const ACCEPTED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 const ACCEPTED_EXTENSIONS = /\.(pdf|jpe?g|png)$/i
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -103,7 +109,7 @@ export default function UploadBox({ files, onFilesChange, disabled = false }) {
               </button>
             </div>
           ))}
-          <p className="upload-privacy"><FileUp size={14} aria-hidden="true" /> Your files are encrypted and deleted after processing.</p>
+          <p className="upload-privacy"><FileUp size={14} aria-hidden="true" /> Your files are used only for verification and deleted after processing.</p>
         </div>
       )}
     </section>
