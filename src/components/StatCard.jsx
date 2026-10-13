@@ -5,9 +5,11 @@ const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: '
 
 export default function StatCard({ stat }) {
   const Icon = icons[stat.icon] || Wallet
-  const formattedValue = stat.suffix
-    ? `${stat.value}${stat.suffix}`
-    : currency.format(stat.value)
+  const formattedValue = stat.value === null || stat.value === undefined
+    ? '—'
+    : stat.suffix
+      ? `${stat.value}${stat.suffix}`
+      : currency.format(stat.value)
 
   return (
     <article className="stat-card">

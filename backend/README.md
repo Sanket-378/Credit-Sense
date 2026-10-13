@@ -37,7 +37,9 @@ The consistency, scoring and forensics tests are offline and do not call Groq.
 
 ## Privacy and response contract
 
-Uploads are size- and signature-validated, held in temporary files only while processed, and removed even if processing fails. Original documents and OCR text are never persisted. ID numbers are masked before extracted data is returned or stored. SQLite stores the profile UUID, overall score/verdict, extracted fields and per-document scores/verdicts.
+Uploads are size- and signature-validated, held in temporary files only while processed, and removed even if processing fails. Original documents and OCR text are never persisted. ID numbers are masked before extracted data is returned or stored. SQLite stores each verification profile's UUID, pseudonymous user UUID, overall score/verdict, extracted fields and per-document scores/verdicts. The frontend keeps a random UUID in browser local storage and sends it as `X-User-ID`; the API returns the same ID as `user_id`. If the header is omitted, the API creates a new random user ID; direct API clients should retain that returned ID and send it on later requests to associate further profiles. This ID links records but is not authentication: anyone who obtains it can claim it, so do not treat it as proof of identity or use it to authorize access.
+
+On startup, the API creates missing tables and adds the nullable `user_id` column to existing profile tables. Older profiles remain unassigned.
 
 The verification endpoint accepts PDF, JPG/JPEG and PNG files up to `MAX_FILE_MB` each, with at most 10 files per request. `doc_types` must match the number and order of uploaded files and use `salary_slip`, `bank_statement`, `upi_statement`, `invoice` or `id_proof`. Per-document responses include `checks_performed` and `checks_skipped`; a verified verdict requires at least two completed consistency checks.
 

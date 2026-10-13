@@ -1,10 +1,12 @@
 import logging
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..database import get_db
+from ..models import VerificationUser
 from ..schemas import VerificationResponse
 from ..services.extractor import ExtractionServiceError
 from ..services.file_handler import (
@@ -25,6 +27,7 @@ MAX_FILES_PER_REQUEST = 10
 async def verify_documents(
     files: list[UploadFile] = File(...),
     doc_types: list[str] = Form(...),
+    user_id: UUID | None = Header(default=None, alias="X-User-ID"),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
 ):
@@ -63,7 +66,11 @@ async def verify_documents(
             except UploadValidationError as error:
                 raise HTTPException(status_code=400, detail=str(error)) from error
             saved_uploads.append((upload.filename or "document", doc_type, saved))
-        return await process_documents(saved_uploads, settings, db)
+        resolved_user_id = str(user_id or uuid4())
+        if db.get(VerificationUser, resolved_user_id) is None:
+            db.add(VerificationUser(id=resolved_user_id))
+            db.flush()
+        return await process_documents(saved_uploads, settings, db, resolved_user_id)
     except HTTPException:
         for _, _, saved in saved_uploads:
             delete_temporary_upload(saved)

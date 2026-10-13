@@ -54,6 +54,7 @@ class OverallResult(BaseModel):
 
 
 class VerificationResponse(BaseModel):
+    user_id: str
     profile_id: str
     overall: OverallResult
     documents: list[DocumentResult]

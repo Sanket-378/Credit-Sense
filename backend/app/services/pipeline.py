@@ -283,6 +283,7 @@ async def process_documents(
     uploads: list[tuple[str, str, SavedUpload]],
     settings: Settings,
     db: Session,
+    user_id: str,
 ) -> VerificationResponse:
     tasks = [
         _process_one(filename, doc_type, upload, settings)
@@ -346,11 +347,13 @@ async def process_documents(
         overall_score=overall_score,
         verdict=overall_verdict,
         data=persisted_data,
+        user_id=user_id,
     )
     db.add(profile)
     db.commit()
 
     return VerificationResponse(
+        user_id=user_id,
         profile_id=profile_id,
         overall=OverallResult(
             authenticity_score=overall_score,

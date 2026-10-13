@@ -16,3 +16,5 @@ Open the local URL printed by Vite. Run `npm run build` to create a production b
 See [backend/README.md](./backend/README.md) for Python environment setup, Groq configuration, API run instructions and tests. The frontend reads `VITE_API_URL` from the root `.env` file (default: `http://127.0.0.1:8001`).
 
 Uploaded files are temporarily stored for processing and deleted afterward. ID numbers are masked before verification data is returned or persisted.
+
+The browser retains a random pseudonymous user ID in local storage so later verification profiles can be associated with the same browser. This ID is not an account or authentication credential.

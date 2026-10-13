@@ -7,7 +7,7 @@ export const features = [
   },
   {
     title: 'Financial Health Analysis',
-    description: 'GenAI turns income, expenses, debt and cash flow into clear insights.',
+    description: 'Extracted salary and statement data show cash flow and estimated spending patterns.',
     icon: 'ChartNoAxesCombined',
     color: 'teal',
   },
@@ -33,44 +33,6 @@ export const features = [
 
 export const affordabilityProfile = {
   monthlyIncome: 78500,
-}
-
-export const financialHealth = {
-  stats: [
-    { label: 'Monthly income', value: 78500, change: '+8.2%', icon: 'TrendingUp', tone: 'teal' },
-    { label: 'Monthly expenses', value: 42100, change: '−2.4%', icon: 'Wallet', tone: 'blue' },
-    { label: 'Total debt', value: 186000, change: 'On track', icon: 'CreditCard', tone: 'violet' },
-    { label: 'Savings rate', value: 28, change: '+4.1%', icon: 'PiggyBank', tone: 'amber', suffix: '%' },
-  ],
-  monthly: [
-    { month: 'May', income: 71000, expenses: 44500 },
-    { month: 'Jun', income: 73500, expenses: 47200 },
-    { month: 'Jul', income: 72000, expenses: 43100 },
-    { month: 'Aug', income: 76000, expenses: 45800 },
-    { month: 'Sep', income: 75200, expenses: 43900 },
-    { month: 'Oct', income: 78500, expenses: 42100 },
-  ],
-  expenses: [
-    { name: 'Housing', value: 35, color: '#315be8' },
-    { name: 'Essentials', value: 26, color: '#16b8a6' },
-    { name: 'Transport', value: 14, color: '#f1a84b' },
-    { name: 'Lifestyle', value: 15, color: '#9b83eb' },
-    { name: 'Other', value: 10, color: '#cbd5e1' },
-  ],
-  cashFlow: [
-    { month: 'May', amount: 26500 },
-    { month: 'Jun', amount: 26300 },
-    { month: 'Jul', amount: 28900 },
-    { month: 'Aug', amount: 30200 },
-    { month: 'Sep', amount: 31300 },
-    { month: 'Oct', amount: 36400 },
-  ],
-  insights: [
-    'Your income has grown for three months in a row. That consistency is a strong foundation.',
-    'You saved 28% of your income this month, above the 20% healthy savings benchmark.',
-    'Dining and subscriptions are up slightly. Reviewing recurring costs could free up about ₹2,400 monthly.',
-    'Your cash flow stayed positive in every month shown, leaving room to plan your next financial goal.',
-  ],
 }
 
 export const creditRisk = {

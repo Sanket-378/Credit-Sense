@@ -3,14 +3,14 @@ from types import SimpleNamespace
 
 import pymupdf
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.config import Settings, get_settings
-from app.database import Base, get_db
+from app.database import Base, get_db, initialize_database
 from app.main import app
-from app.models import VerifiedProfile
+from app.models import VerificationUser, VerifiedProfile
 from app.routers.documents import ALLOWED_DOC_TYPES
 
 
@@ -30,6 +30,34 @@ def test_root_endpoint_points_to_docs_and_health():
             "docs": "/docs",
             "health": "/health",
         }
+
+
+def test_database_initialization_adds_user_link_to_existing_profiles():
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE verified_profiles ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "created_at DATETIME NOT NULL, "
+            "overall_score INTEGER NOT NULL, "
+            "verdict VARCHAR(20) NOT NULL, "
+            "data JSON NOT NULL)"
+        ))
+        connection.execute(text(
+            "INSERT INTO verified_profiles "
+            "(id, created_at, overall_score, verdict, data) "
+            "VALUES ('legacy-profile', '2025-01-01', 85, 'needs_review', '{}')"
+        ))
+
+    initialize_database(engine)
+
+    columns = {column["name"] for column in inspect(engine).get_columns("verified_profiles")}
+    assert "user_id" in columns
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT user_id FROM verified_profiles WHERE id = 'legacy-profile'")
+        ).scalar_one() is None
+    engine.dispose()
 
 
 def test_upi_statement_is_an_allowed_document_type():
@@ -170,6 +198,7 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
         enable_vision_crosscheck=False,
     )
     app.dependency_overrides[get_db] = override_db
+    user_id = "d6dca8d6-c33a-4faa-866b-99f3cb81f685"
 
     pdf = pymupdf.open()
     pdf.new_page().insert_text((72, 72), "Salary slip for Asha Rao Example Works December 2024")
@@ -182,6 +211,7 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
                 "/api/documents/verify",
                 files=[("files", ("payslip.pdf", pdf_bytes, "application/pdf"))],
                 data={"doc_types": "salary_slip"},
+                headers={"X-User-ID": user_id},
             )
     finally:
         app.dependency_overrides.pop(get_settings, None)
@@ -189,6 +219,7 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
 
     assert response.status_code == 200
     result = response.json()
+    assert result["user_id"] == user_id
     assert result["overall"]["documents_processed"] == 1
     assert result["documents"][0]["extracted_data"]["net_salary"] == 45000
     assert result["documents"][0]["extraction_method"] == "llm"
@@ -200,6 +231,8 @@ def test_verification_returns_and_persists_only_extracted_results(monkeypatch):
     with test_sessions() as session:
         profile = session.get(VerifiedProfile, result["profile_id"])
         assert profile is not None
+        assert profile.user_id == user_id
+        assert session.get(VerificationUser, user_id) is not None
         assert profile.overall_score == result["overall"]["authenticity_score"]
         assert "payslip.pdf" not in json.dumps(profile.data)
         assert profile.data["documents"][0]["extracted_data"]["employee_name"] == "Asha Rao"
